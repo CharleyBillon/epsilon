@@ -5,14 +5,16 @@
 #include <poincare/opposite.h>
 #include <poincare/undefined.h>
 //#include <poincare/matrix.h>
+#include <poincare/layout_helper.h>
+#include <poincare/serialization_helper.h>
 #include <assert.h>
 
 namespace Poincare {
 
-int AdditionNode::polynomialDegree(char symbolName) const {
+int AdditionNode::polynomialDegree(Context & context, const char * symbolName) const {
   int degree = 0;
   for (ExpressionNode * e : children()) {
-    int d = e->polynomialDegree(symbolName);
+    int d = e->polynomialDegree(context, symbolName);
     if (d < 0) {
       return -1;
     }
@@ -21,28 +23,36 @@ int AdditionNode::polynomialDegree(char symbolName) const {
   return degree;
 }
 
-int AdditionNode::getPolynomialCoefficients(char symbolName, Expression coefficients[]) const {
-  return Addition(this).getPolynomialCoefficients(symbolName, coefficients);
+int AdditionNode::getPolynomialCoefficients(Context & context, const char * symbolName, Expression coefficients[]) const {
+  return Addition(this).getPolynomialCoefficients(context, symbolName, coefficients);
 }
 
 // Private
 
 // Layout
 bool AdditionNode::childNeedsParenthesis(const TreeNode * child) const {
-  if ((static_cast<const ExpressionNode *>(child)->isNumber() && static_cast<const ExpressionNode *>(child)->sign() == Sign::Negative) || static_cast<const ExpressionNode *>(child)->type() == Type::Opposite) {
+  if (((static_cast<const ExpressionNode *>(child)->isNumber()
+          && static_cast<const ExpressionNode *>(child)->sign() == Sign::Negative)
+        || static_cast<const ExpressionNode *>(child)->type() == Type::Opposite)
+      && child != childAtIndex(0))
+  {
     return true;
   }
   return false;
 }
 
 Layout AdditionNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-  return LayoutHelper::Infix(Addition(this), floatDisplayMode, numberOfSignificantDigits, name());
+  return LayoutHelper::Infix(Addition(this), floatDisplayMode, numberOfSignificantDigits, "+");
+}
+
+int AdditionNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
+  return SerializationHelper::Infix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, "+");
 }
 
 // Simplication
 
-Expression AdditionNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return Addition(this).shallowReduce(context, angleUnit);
+Expression AdditionNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return Addition(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 Expression AdditionNode::shallowBeautify(Context & context, Preferences::AngleUnit angleUnit) {
@@ -60,8 +70,8 @@ const Number Addition::NumeralFactor(const Expression & e) {
   return Rational(1);
 }
 
-int Addition::getPolynomialCoefficients(char symbolName, Expression coefficients[]) const {
-  int deg = polynomialDegree(symbolName);
+int Addition::getPolynomialCoefficients(Context & context, const char * symbolName, Expression coefficients[]) const {
+  int deg = polynomialDegree(context, symbolName);
   if (deg < 0 || deg > Expression::k_maxPolynomialDegree) {
     return -1;
   }
@@ -70,7 +80,7 @@ int Addition::getPolynomialCoefficients(char symbolName, Expression coefficients
   }
   Expression intermediateCoefficients[Expression::k_maxNumberOfPolynomialCoefficients];
   for (int i = 0; i < numberOfChildren(); i++) {
-    int d = childAtIndex(i).getPolynomialCoefficients(symbolName, intermediateCoefficients);
+    int d = childAtIndex(i).getPolynomialCoefficients(context, symbolName, intermediateCoefficients);
     assert(d < Expression::k_maxNumberOfPolynomialCoefficients);
     for (int j = 0; j < d+1; j++) {
       static_cast<Addition&>(coefficients[j]).addChildAtIndexInPlace(intermediateCoefficients[j], coefficients[j].numberOfChildren(), coefficients[j].numberOfChildren());
@@ -131,7 +141,7 @@ Expression Addition::shallowBeautify(Context & context, Preferences::AngleUnit a
   return result;
 }
 
-Expression Addition::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression Addition::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {

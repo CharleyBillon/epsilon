@@ -1,6 +1,7 @@
 #include <poincare/binomial_coefficient.h>
 #include <poincare/binomial_coefficient_layout.h>
 #include <poincare/rational.h>
+#include <poincare/layout_helper.h>
 #include <poincare/serialization_helper.h>
 #include <poincare/undefined.h>
 #include <stdlib.h>
@@ -9,8 +10,12 @@
 
 namespace Poincare {
 
-Expression BinomialCoefficientNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return BinomialCoefficient(this).shallowReduce(context, angleUnit);
+constexpr Expression::FunctionHelper BinomialCoefficient::s_functionHelper;
+
+int BinomialCoefficientNode::numberOfChildren() const { return BinomialCoefficient::s_functionHelper.numberOfChildren(); }
+
+Expression BinomialCoefficientNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return BinomialCoefficient(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 Layout BinomialCoefficientNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
@@ -20,7 +25,7 @@ Layout BinomialCoefficientNode::createLayout(Preferences::PrintFloatMode floatDi
 }
 
 int BinomialCoefficientNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-    return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, "binomial");
+    return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, BinomialCoefficient::s_functionHelper.name());
 }
 
 template<typename T>
@@ -48,9 +53,7 @@ T BinomialCoefficientNode::compute(T k, T n) {
   return std::round(result);
 }
 
-BinomialCoefficient::BinomialCoefficient() : Expression(TreePool::sharedPool()->createTreeNode<BinomialCoefficientNode>()) {}
-
-Expression BinomialCoefficient::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression BinomialCoefficient::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {

@@ -2,17 +2,27 @@
 #include <poincare/undefined.h>
 #include <poincare/rational.h>
 #include <poincare/power.h>
+#include <poincare/layout_helper.h>
+#include <poincare/serialization_helper.h>
 #include <assert.h>
 #include <cmath>
 
 namespace Poincare {
 
+constexpr Expression::FunctionHelper Round::s_functionHelper;
+
+int RoundNode::numberOfChildren() const { return Round::s_functionHelper.numberOfChildren(); }
+
 Layout RoundNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-  return LayoutHelper::Prefix(Round(this), floatDisplayMode, numberOfSignificantDigits, name());
+  return LayoutHelper::Prefix(Round(this), floatDisplayMode, numberOfSignificantDigits, Round::s_functionHelper.name());
 }
 
-Expression RoundNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return Round(this).shallowReduce(context, angleUnit);
+int RoundNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
+  return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, Round::s_functionHelper.name());
+}
+
+Expression RoundNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return Round(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 template<typename T>
@@ -28,9 +38,7 @@ Evaluation<T> RoundNode::templatedApproximate(Context& context, Preferences::Ang
   return Complex<T>(std::round(f1*err)/err);
 }
 
-Round::Round() : Expression(TreePool::sharedPool()->createTreeNode<RoundNode>()) {}
-
-Expression Round::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression Round::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {
@@ -75,5 +83,3 @@ Expression Round::shallowReduce(Context & context, Preferences::AngleUnit angleU
 }
 
 }
-
-

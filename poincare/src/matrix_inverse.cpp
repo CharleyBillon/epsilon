@@ -10,16 +10,20 @@
 
 namespace Poincare {
 
-Expression MatrixInverseNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return MatrixInverse(this).shallowReduce(context, angleUnit);
+constexpr Expression::FunctionHelper MatrixInverse::s_functionHelper;
+
+int MatrixInverseNode::numberOfChildren() const { return MatrixInverse::s_functionHelper.numberOfChildren(); }
+
+Expression MatrixInverseNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return MatrixInverse(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 Layout MatrixInverseNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-  return LayoutHelper::Prefix(MatrixInverse(this), floatDisplayMode, numberOfSignificantDigits, name());
+  return LayoutHelper::Prefix(MatrixInverse(this), floatDisplayMode, numberOfSignificantDigits, MatrixInverse::s_functionHelper.name());
 }
 
 int MatrixInverseNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-  return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, name());
+  return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, MatrixInverse::s_functionHelper.name());
 }
 
 // TODO: handle this exactly in shallowReduce for small dimensions.
@@ -38,9 +42,7 @@ Evaluation<T> MatrixInverseNode::templatedApproximate(Context& context, Preferen
   return inverse;
 }
 
-MatrixInverse::MatrixInverse() : Expression(TreePool::sharedPool()->createTreeNode<MatrixInverseNode>()) {}
-
-Expression MatrixInverse::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression MatrixInverse::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {

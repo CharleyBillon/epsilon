@@ -1,4 +1,5 @@
 #include <poincare/trigonometry.h>
+#include <poincare/constant.h>
 #include <poincare/symbol.h>
 #include <poincare/preferences.h>
 #include <poincare/undefined.h>
@@ -17,7 +18,8 @@ namespace Poincare {
 
 float Trigonometry::characteristicXRange(const Expression & e, Context & context, Preferences::AngleUnit angleUnit) {
   assert(e.numberOfChildren() == 1);
-  int d = e.childAtIndex(0).polynomialDegree('x');
+  const char x[] = {Symbol::SpecialSymbols::UnknownX, 0};
+  int d = e.childAtIndex(0).polynomialDegree(context, x);
   if (d < 0 || d > 1) {
     // child(0) is not linear so we cannot easily find an interesting range
     return e.childAtIndex(0).characteristicXRange(context, angleUnit);
@@ -30,7 +32,7 @@ float Trigonometry::characteristicXRange(const Expression & e, Context & context
   assert(d == 1);
   /* To compute a, the slope of the expression child(0), we compute the
    * derivative of child(0) for any x value. */
-  Poincare::Derivative derivative(e.childAtIndex(0).clone(), Float<float>(1.0f));
+  Poincare::Derivative derivative = Poincare::Derivative::Builder(e.childAtIndex(0).clone(), Symbol(x, 1), Float<float>(1.0f));
   float a = derivative.approximateToScalar<float>(context, angleUnit);
   float pi = angleUnit == Preferences::AngleUnit::Radian ? M_PI : 180.0f;
   return 2.0f*pi/std::fabs(a);
@@ -78,8 +80,8 @@ Expression Trigonometry::shallowReduceDirectFunction(Expression & e, Context& co
   if ((angleUnit == Preferences::AngleUnit::Radian
         && e.childAtIndex(0).type() == ExpressionNode::Type::Multiplication
         && e.childAtIndex(0).numberOfChildren() == 2
-        && e.childAtIndex(0).childAtIndex(1).type() == ExpressionNode::Type::Symbol
-        && e.childAtIndex(0).childAtIndex(1).convert<Symbol>().name() == Ion::Charset::SmallPi
+        && e.childAtIndex(0).childAtIndex(1).type() == ExpressionNode::Type::Constant
+        && e.childAtIndex(0).childAtIndex(1).convert<Constant>().isPi()
         && e.childAtIndex(0).childAtIndex(0).type() == ExpressionNode::Type::Rational)
       || (angleUnit == Preferences::AngleUnit::Degree
         && e.childAtIndex(0).type() == ExpressionNode::Type::Rational))
@@ -204,7 +206,7 @@ Expression Trigonometry::shallowReduceInverseFunction(Expression & e, Context& c
     newArgument = newArgument.shallowReduce(context, angleUnit);
     if (e.type() == ExpressionNode::Type::ArcCosine) {
       // Do the reduction after the if case, or it might change the result!
-      Expression pi = angleUnit == Preferences::AngleUnit::Radian ? static_cast<Expression>(Symbol(Ion::Charset::SmallPi)) : static_cast<Expression>(Rational(180));
+      Expression pi = angleUnit == Preferences::AngleUnit::Radian ? static_cast<Expression>(Constant(Ion::Charset::SmallPi)) : static_cast<Expression>(Rational(180));
       Subtraction s;
       e.replaceWithInPlace(s);
       s.replaceChildAtIndexInPlace(0, pi);
@@ -293,21 +295,21 @@ Expression Trigonometry::table(const Expression e, ExpressionNode::Type type, Co
   if (inputIndex == 0 && e.type() != ExpressionNode::Type::Rational) {
     return Expression();
   }
-  if (inputIndex == 1 && e.type() != ExpressionNode::Type::Rational && e.type() != ExpressionNode::Type::Multiplication && e.type() != ExpressionNode::Type::Symbol) {
+  if (inputIndex == 1 && e.type() != ExpressionNode::Type::Rational && e.type() != ExpressionNode::Type::Multiplication && e.type() != ExpressionNode::Type::Constant) {
     return Expression();
   }
   if (inputIndex >1 && e.type() != ExpressionNode::Type::Rational && e.type() != ExpressionNode::Type::Multiplication && e.type() != ExpressionNode::Type::Power && e.type() != ExpressionNode::Type::Addition) {
     return Expression();
   }
   for (int i = 0; i < k_numberOfEntries; i++) {
-    Expression input = Expression::parse(cheatTable[i][inputIndex]);
+    Expression input = Expression::Parse(cheatTable[i][inputIndex]);
     if (input.isUninitialized()) {
       continue;
     }
     input = input.deepReduce(context, angleUnit);
     bool rightInput = input.isIdenticalTo(e);
     if (rightInput) {
-      Expression output = Expression::parse(cheatTable[i][outputIndex]);
+      Expression output = Expression::Parse(cheatTable[i][outputIndex]);
       if (output.isUninitialized()) {
         return Expression();
       }

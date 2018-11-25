@@ -11,8 +11,8 @@ HistoryViewCell::HistoryViewCell(Responder * parentResponder) :
   Responder(parentResponder),
   m_calculation(),
   m_inputLayout(),
-  m_exactOutputLayout(),
-  m_approximateOutputLayout(),
+  m_leftOutputLayout(),
+  m_rightOutputLayout(),
   m_inputView(this),
   m_scrollableOutputView(this),
   m_selectedSubviewType(HistoryViewCell::SubviewType::Output)
@@ -105,14 +105,21 @@ void HistoryViewCell::setCalculation(Calculation * calculation) {
   /* Both output expressions have to be updated at the same time. Otherwise,
    * when updating one layout, if the second one still points to a deleted
    * layout, calling to layoutSubviews() would fail. */
-  if (!m_exactOutputLayout.isUninitialized()) {
-    m_exactOutputLayout = Poincare::Layout();
+  if (!m_leftOutputLayout.isUninitialized()) {
+    m_leftOutputLayout = Poincare::Layout();
   }
-  if (!calculation->shouldOnlyDisplayApproximateOutput(calculationApp->localContext())) {
-    m_exactOutputLayout = calculation->createExactOutputLayout(calculationApp->localContext());
+  if (!m_rightOutputLayout.isUninitialized()) {
+    m_rightOutputLayout = Poincare::Layout();
   }
-  m_approximateOutputLayout = calculation->createApproximateOutputLayout(calculationApp->localContext());
-  m_scrollableOutputView.setLayouts(m_approximateOutputLayout, m_exactOutputLayout);
+  if (calculation->shouldOnlyDisplayExactOutput()) {
+    m_rightOutputLayout = calculation->createExactOutputLayout();
+  } else {
+    m_rightOutputLayout = calculation->createApproximateOutputLayout(calculationApp->localContext());
+    if (!calculation->shouldOnlyDisplayApproximateOutput(calculationApp->localContext())) {
+      m_leftOutputLayout = calculation->createExactOutputLayout();
+    }
+  }
+  m_scrollableOutputView.setLayouts(m_rightOutputLayout, m_leftOutputLayout);
   I18n::Message equalMessage = calculation->exactAndApproximateDisplayedOutputsAreEqual(calculationApp->localContext()) == Calculation::EqualSign::Equal ? I18n::Message::Equal : I18n::Message::AlmostEqual;
   m_scrollableOutputView.setEqualMessage(equalMessage);
 }

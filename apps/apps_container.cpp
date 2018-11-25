@@ -57,7 +57,7 @@ AppsContainer::AppsContainer() :
   m_window(),
   m_emptyBatteryWindow(),
   m_globalContext(),
-  m_variableBoxController(&m_globalContext),
+  m_variableBoxController(),
   m_examPopUpController(this),
 #if EPSILON_BOOT_PROMPT == EPSILON_BETA_PROMPT
   m_promptController(sPromptMessages, sPromptColors, 8),
@@ -74,6 +74,7 @@ AppsContainer::AppsContainer() :
 {
   m_emptyBatteryWindow.setFrame(KDRect(0, 0, Ion::Display::Width, Ion::Display::Height));
   Poincare::Expression::setCircuitBreaker(AppsContainer::poincareCircuitBreaker);
+  Ion::Storage::sharedStorage()->setDelegate(this);
 }
 
 bool AppsContainer::poincareCircuitBreaker() {
@@ -94,6 +95,9 @@ App::Snapshot * AppsContainer::usbConnectedAppSnapshot() {
 }
 
 void AppsContainer::reset() {
+  // Empty storage (delete functions, variables, python scripts)
+  Ion::Storage::sharedStorage()->destroyAllRecords();
+  // Empty clipboard
   Clipboard::sharedClipboard()->reset();
   for (int i = 0; i < numberOfApps(); i++) {
     appSnapshotAtIndex(i)->reset();
@@ -136,6 +140,10 @@ bool AppsContainer::dispatchEvent(Ion::Events::Event event) {
   if (event == Ion::Events::USBEnumeration) {
     if (Ion::USB::isPlugged()) {
       App::Snapshot * activeSnapshot = (activeApp() == nullptr ? appSnapshotAtIndex(0) : activeApp()->snapshot());
+      /* Just after a software update, the battery timer does not have time to
+       * fire before the calculator enters DFU mode. As the DFU mode blocks the
+       * event loop, we update the battery state "manually" here. */
+      updateBatteryState();
       switchTo(usbConnectedAppSnapshot());
       Ion::USB::DFU();
       switchTo(activeSnapshot);
@@ -230,16 +238,17 @@ void AppsContainer::run() {
     }
     switchTo(appSnapshotAtIndex(0));
     Poincare::Tidy();
-    activeApp()->displayWarning(I18n::Message::AppMemoryFull, true);
+    activeApp()->displayWarning(I18n::Message::PoolMemoryFull1, I18n::Message::PoolMemoryFull2, true);
   }
   Container::run();
   switchTo(nullptr);
 }
 
 bool AppsContainer::updateBatteryState() {
-  if (m_window.updateBatteryLevel() ||
-      m_window.updateIsChargingState() ||
-      m_window.updatePluggedState()) {
+  bool batteryLevelUpdated = m_window.updateBatteryLevel();
+  bool pluggedStateUpdated = m_window.updatePluggedState();
+  bool chargingStateUpdated = m_window.updateIsChargingState();
+  if (batteryLevelUpdated || pluggedStateUpdated || chargingStateUpdated) {
     return true;
   }
   return false;
@@ -257,7 +266,7 @@ void AppsContainer::displayExamModePopUp(bool activate) {
 void AppsContainer::shutdownDueToLowBattery() {
   while (Ion::Battery::level() == Ion::Battery::Charge::EMPTY) {
     m_emptyBatteryWindow.redraw(true);
-    Ion::msleep(3000);
+    Ion::Timing::msleep(3000);
     Ion::Power::suspend();
   }
   window()->redraw(true);
@@ -285,6 +294,18 @@ void AppsContainer::redrawWindow() {
 void AppsContainer::examDeactivatingPopUpIsDismissed() {
   if (Ion::USB::isPlugged()) {
     Ion::USB::enable();
+  }
+}
+
+void AppsContainer::storageDidChangeForRecord(const Ion::Storage::Record record) {
+  if (activeApp()) {
+    activeApp()->snapshot()->storageDidChangeForRecord(record);
+  }
+}
+
+void AppsContainer::storageIsFull() {
+  if (activeApp()) {
+    activeApp()->displayWarning(I18n::Message::StorageMemoryFull1, I18n::Message::StorageMemoryFull2, true);
   }
 }
 

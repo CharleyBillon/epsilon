@@ -9,6 +9,7 @@
 #include <poincare/subtraction.h>
 #include <poincare/symbol.h>
 #include <poincare/char_layout.h>
+#include <poincare/serialization_helper.h>
 #include <poincare/horizontal_layout.h>
 #include <ion.h>
 extern "C" {
@@ -19,8 +20,8 @@ extern "C" {
 }
 namespace Poincare {
 
-Expression EqualNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return Equal(this).shallowReduce(context, angleUnit);
+Expression EqualNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return Equal(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 Layout EqualNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
@@ -42,10 +43,10 @@ Evaluation<T> EqualNode::templatedApproximate(Context& context, Preferences::Ang
 
 Expression Equal::standardEquation(Context & context, Preferences::AngleUnit angleUnit) const {
   Expression sub = Subtraction(childAtIndex(0).clone(), childAtIndex(1).clone());
-  return sub.deepReduce(context, angleUnit);
+  return sub.reduce(context, angleUnit);
 }
 
-Expression Equal::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression Equal::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {

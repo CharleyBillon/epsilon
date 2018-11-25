@@ -3,17 +3,26 @@
 #include <poincare/undefined.h>
 #include <poincare/arithmetic.h>
 #include <poincare/layout_helper.h>
+#include <poincare/serialization_helper.h>
 #include <cmath>
 #include <assert.h>
 
 namespace Poincare {
 
+constexpr Expression::FunctionHelper LeastCommonMultiple::s_functionHelper;
+
+int LeastCommonMultipleNode::numberOfChildren() const { return LeastCommonMultiple::s_functionHelper.numberOfChildren(); }
+
 Layout LeastCommonMultipleNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-  return LayoutHelper::Prefix(LeastCommonMultiple(this), floatDisplayMode, numberOfSignificantDigits, name());
+  return LayoutHelper::Prefix(LeastCommonMultiple(this), floatDisplayMode, numberOfSignificantDigits, LeastCommonMultiple::s_functionHelper.name());
 }
 
-Expression LeastCommonMultipleNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return LeastCommonMultiple(this).shallowReduce(context, angleUnit);
+int LeastCommonMultipleNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
+  return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, LeastCommonMultiple::s_functionHelper.name());
+}
+
+Expression LeastCommonMultipleNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return LeastCommonMultiple(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 template<typename T>
@@ -44,9 +53,7 @@ Evaluation<T> LeastCommonMultipleNode::templatedApproximate(Context& context, Pr
   return Complex<T>(product/a);
 }
 
-LeastCommonMultiple::LeastCommonMultiple() : Expression(TreePool::sharedPool()->createTreeNode<LeastCommonMultipleNode>()) {}
-
-Expression LeastCommonMultiple::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression LeastCommonMultiple::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {

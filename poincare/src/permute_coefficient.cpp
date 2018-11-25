@@ -1,6 +1,8 @@
 #include <poincare/permute_coefficient.h>
 #include <poincare/undefined.h>
 #include <poincare/rational.h>
+#include <poincare/layout_helper.h>
+#include <poincare/serialization_helper.h>
 
 extern "C" {
 #include <assert.h>
@@ -9,12 +11,20 @@ extern "C" {
 
 namespace Poincare {
 
+constexpr Expression::FunctionHelper PermuteCoefficient::s_functionHelper;
+
+int PermuteCoefficientNode::numberOfChildren() const { return PermuteCoefficient::s_functionHelper.numberOfChildren(); }
+
 Layout PermuteCoefficientNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-  return LayoutHelper::Prefix(PermuteCoefficient(this), floatDisplayMode, numberOfSignificantDigits, name());
+  return LayoutHelper::Prefix(PermuteCoefficient(this), floatDisplayMode, numberOfSignificantDigits, PermuteCoefficient::s_functionHelper.name());
 }
 
-Expression PermuteCoefficientNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return PermuteCoefficient(this).shallowReduce(context, angleUnit);
+int PermuteCoefficientNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
+  return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, PermuteCoefficient::s_functionHelper.name());
+}
+
+Expression PermuteCoefficientNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return PermuteCoefficient(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 template<typename T>
@@ -39,9 +49,7 @@ Evaluation<T> PermuteCoefficientNode::templatedApproximate(Context& context, Pre
   return Complex<T>(std::round(result));
 }
 
-PermuteCoefficient::PermuteCoefficient() : Expression(TreePool::sharedPool()->createTreeNode<PermuteCoefficientNode>()) {}
-
-Expression PermuteCoefficient::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression PermuteCoefficient::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {

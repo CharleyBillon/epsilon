@@ -28,10 +28,10 @@ ExpressionNode::Sign MultiplicationNode::sign() const {
   return (Sign)sign;
 }
 
-int MultiplicationNode::polynomialDegree(char symbolName) const {
+int MultiplicationNode::polynomialDegree(Context & context, const char * symbolName) const {
   int degree = 0;
   for (ExpressionNode * c : children()) {
-    int d = c->polynomialDegree(symbolName);
+    int d = c->polynomialDegree(context, symbolName);
     if (d < 0) {
       return -1;
     }
@@ -40,8 +40,8 @@ int MultiplicationNode::polynomialDegree(char symbolName) const {
   return degree;
 }
 
-int MultiplicationNode::getPolynomialCoefficients(char symbolName, Expression coefficients[]) const {
-  return Multiplication(this).getPolynomialCoefficients(symbolName, coefficients);
+int MultiplicationNode::getPolynomialCoefficients(Context & context, const char * symbolName, Expression coefficients[]) const {
+  return Multiplication(this).getPolynomialCoefficients(context, symbolName, coefficients);
 }
 
 template<typename T>
@@ -68,11 +68,16 @@ Expression MultiplicationNode::setSign(Sign s, Context & context, Preferences::A
 }
 
 bool MultiplicationNode::childNeedsParenthesis(const TreeNode * child) const {
-  if (static_cast<const ExpressionNode *>(child)->isNumber() && static_cast<const ExpressionNode *>(child)->sign() == Sign::Negative) {
+  if ((static_cast<const ExpressionNode *>(child)->isNumber() && static_cast<const ExpressionNode *>(child)->sign() == Sign::Negative)
+        || static_cast<const ExpressionNode *>(child)->type() == ExpressionNode::Type::Opposite)
+  {
+    if (child == childAtIndex(0)) {
+      return false;
+    }
     return true;
   }
-  Type types[] = {Type::Subtraction, Type::Opposite, Type::Addition};
-  return static_cast<const ExpressionNode *>(child)->isOfType(types, 3);
+  Type types[] = {Type::Subtraction, Type::Addition};
+  return static_cast<const ExpressionNode *>(child)->isOfType(types, 2);
 }
 
 Layout MultiplicationNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
@@ -85,8 +90,8 @@ int MultiplicationNode::serialize(char * buffer, int bufferSize, Preferences::Pr
   return SerializationHelper::Infix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, multiplicationString);
 }
 
-Expression MultiplicationNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return Multiplication(this).shallowReduce(context, angleUnit);
+Expression MultiplicationNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return Multiplication(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 Expression MultiplicationNode::shallowBeautify(Context & context, Preferences::AngleUnit angleUnit) {
@@ -124,7 +129,7 @@ Expression Multiplication::setSign(ExpressionNode::Sign s, Context & context, Pr
   return shallowReduce(context, angleUnit);
 }
 
-Expression Multiplication::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression Multiplication::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   return privateShallowReduce(context, angleUnit, true, true);
 }
 
@@ -195,8 +200,8 @@ Expression Multiplication::shallowBeautify(Context & context, Preferences::Angle
   return thisExp;
 }
 
-int Multiplication::getPolynomialCoefficients(char symbolName, Expression coefficients[]) const {
-  int deg = polynomialDegree(symbolName);
+int Multiplication::getPolynomialCoefficients(Context & context, const char * symbolName, Expression coefficients[]) const {
+  int deg = polynomialDegree(context, symbolName);
   if (deg < 0 || deg > Expression::k_maxPolynomialDegree) {
     return -1;
   }
@@ -210,7 +215,7 @@ int Multiplication::getPolynomialCoefficients(char symbolName, Expression coeffi
   // Let's note result = a(0)+a(1)*X+a(2)*X^2+a(3)*x^3+..
   for (int i = 0; i < numberOfChildren(); i++) {
     // childAtIndex(i) = b(0)+b(1)*X+b(2)*X^2+b(3)*x^3+...
-    int degI = childAtIndex(i).getPolynomialCoefficients(symbolName, intermediateCoefficients);
+    int degI = childAtIndex(i).getPolynomialCoefficients(context, symbolName, intermediateCoefficients);
     assert(degI <= Expression::k_maxPolynomialDegree);
     for (int j = deg; j > 0; j--) {
       // new coefficients[j] = b(0)*a(j)+b(1)*a(j-1)+b(2)*a(j-2)+...
@@ -610,7 +615,7 @@ void Multiplication::factorizeSineAndCosine(int i, int j, Context & context, Pre
   Number sumPQ = Number::Addition(p, q);
   Number absP = p.clone().convert<Number>().setSign(ExpressionNode::Sign::Positive, context, angleUnit);
   Number absQ = q.clone().convert<Number>().setSign(ExpressionNode::Sign::Positive, context, angleUnit);
-  Expression tan = Tangent(x.clone());
+  Expression tan = Tangent::Builder(x.clone());
   if (Number::NaturalOrder(absP, absQ) < 0) {
     // Replace sin(x) by tan(x) or sin(x)^p by tan(x)^p
     if (p.isRationalOne()) {

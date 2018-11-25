@@ -2,8 +2,7 @@
 #define POINCARE_STORE_H
 
 #include <poincare/expression.h>
-#include <poincare/symbol.h>
-#include <poincare/layout_helper.h>
+#include <poincare/symbol_abstract.h>
 #include <poincare/evaluation.h>
 
 namespace Poincare {
@@ -22,11 +21,13 @@ public:
 
   // ExpressionNode
   Type type() const override { return Type::Store; }
-  int polynomialDegree(char symbolName) const override { return -1; }
+  int polynomialDegree(Context & context, const char * symbolName) const override { return -1; }
 
 private:
   // Simplification
-  Expression shallowReduce(Context & context, Preferences::AngleUnit angleUnit) override;
+  void reduceChildren(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) override;
+  void deepReduceChildren(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) override;
+  Expression shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols = true) override;
   // Layout
   Layout createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const override;
   int serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const override;
@@ -39,22 +40,23 @@ private:
 class Store final : public Expression {
 public:
   Store(const StoreNode * n) : Expression(n) {}
-  Store(Expression value, Symbol symbol) : Expression(TreePool::sharedPool()->createTreeNode<StoreNode>()) {
+  Store(Expression value, SymbolAbstract symbol) : Expression(TreePool::sharedPool()->createTreeNode<StoreNode>()) {
     replaceChildAtIndexInPlace(0, value);
     replaceChildAtIndexInPlace(1, symbol);
   }
 
   // Store
-  const Symbol symbol() const {
-    assert(childAtIndex(1).type() == ExpressionNode::Type::Symbol);
-    return childAtIndex(1).convert<const Symbol>();
+  const SymbolAbstract symbol() const {
+    assert(childAtIndex(1).type() == ExpressionNode::Type::Symbol
+        || childAtIndex(1).type() == ExpressionNode::Type::Function);
+    return childAtIndex(1).convert<const SymbolAbstract>();
   }
   const Expression value() const {
     return childAtIndex(0);
   }
 
   // Expression
-  Expression shallowReduce(Context & context, Preferences::AngleUnit angleUnit);
+  Expression shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols = true);
 };
 
 }

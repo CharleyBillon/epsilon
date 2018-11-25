@@ -1,10 +1,15 @@
 #include <poincare/sine.h>
 #include <poincare/complex.h>
 #include <poincare/layout_helper.h>
+#include <poincare/serialization_helper.h>
 #include <poincare/simplification_helper.h>
 #include <cmath>
 
 namespace Poincare {
+
+constexpr Expression::FunctionHelper Sine::s_functionHelper;
+
+int SineNode::numberOfChildren() const { return Sine::s_functionHelper.numberOfChildren(); }
 
 float SineNode::characteristicXRange(Context & context, Preferences::AngleUnit angleUnit) const {
   return Trigonometry::characteristicXRange(Sine(this), context, angleUnit);
@@ -18,16 +23,18 @@ Complex<T> SineNode::computeOnComplex(const std::complex<T> c, Preferences::Angl
 }
 
 Layout SineNode::createLayout(Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
-  return LayoutHelper::Prefix(Sine(this), floatDisplayMode, numberOfSignificantDigits, name());
+  return LayoutHelper::Prefix(Sine(this), floatDisplayMode, numberOfSignificantDigits, Sine::s_functionHelper.name());
 }
 
-Expression SineNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return Sine(this).shallowReduce(context, angleUnit);
+int SineNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
+  return SerializationHelper::Prefix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, Sine::s_functionHelper.name());
 }
 
-Sine::Sine() : Expression(TreePool::sharedPool()->createTreeNode<SineNode>()) {}
+Expression SineNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return Sine(this).shallowReduce(context, angleUnit, replaceSymbols);
+}
 
-Expression Sine::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression Sine::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
     if (e.isUndefined()) {

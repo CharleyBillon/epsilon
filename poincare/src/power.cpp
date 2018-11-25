@@ -2,9 +2,10 @@
 #include <poincare/addition.h>
 #include <poincare/arithmetic.h>
 #include <poincare/binomial_coefficient.h>
+#include <poincare/constant.h>
 #include <poincare/cosine.h>
 #include <poincare/division.h>
-#include <poincare/global_context.h>
+#include <poincare/infinity.h>
 #include <poincare/nth_root.h>
 #include <poincare/opposite.h>
 #include <poincare/parenthesis.h>
@@ -15,6 +16,7 @@
 #include <poincare/undefined.h>
 #include <poincare/horizontal_layout.h>
 #include <poincare/vertical_offset_layout.h>
+#include <poincare/serialization_helper.h>
 #include <cmath>
 #include <math.h>
 #include <ion.h>
@@ -48,12 +50,12 @@ Expression PowerNode::setSign(Sign s, Context & context, Preferences::AngleUnit 
   return Power(this).setSign(s, context, angleUnit);
 }
 
-int PowerNode::polynomialDegree(char symbolName) const {
-  int deg = ExpressionNode::polynomialDegree(symbolName);
+int PowerNode::polynomialDegree(Context & context, const char * symbolName) const {
+  int deg = ExpressionNode::polynomialDegree(context, symbolName);
   if (deg == 0) {
     return deg;
   }
-  int op0Deg = childAtIndex(0)->polynomialDegree(symbolName);
+  int op0Deg = childAtIndex(0)->polynomialDegree(context, symbolName);
   if (op0Deg < 0) {
     return -1;
   }
@@ -72,21 +74,29 @@ int PowerNode::polynomialDegree(char symbolName) const {
   return -1;
 }
 
-int PowerNode::getPolynomialCoefficients(char symbolName, Expression coefficients[]) const {
-  return Power(this).getPolynomialCoefficients(symbolName, coefficients);
+int PowerNode::getPolynomialCoefficients(Context & context, const char * symbolName, Expression coefficients[]) const {
+  return Power(this).getPolynomialCoefficients(context, symbolName, coefficients);
 }
 
 // Private
 
 template<typename T>
 Complex<T> PowerNode::compute(const std::complex<T> c, const std::complex<T> d) {
+  std::complex<T> result = std::pow(c, d);
+  if (c.imag() == 0.0 && d.imag() == 0.0 && c.real() >= 0.0) {
+    /* pow: (R+, R) -> R+
+     * However, std::pow(2.0, 1000) = (INFINITY, NAN). Openbsd pow of a
+     * positive real and another real has a undefined imaginary when the real
+     * result is infinity. To avoid this, we force the imaginary part of
+     * pow(R+,R) to 0.0. */
+    result.imag(0.0);
+  }
   /* Openbsd trigonometric functions are numerical implementation and thus are
    * approximative.
    * The error epsilon is ~1E-7 on float and ~1E-15 on double. In order to
    * avoid weird results as e(i*pi) = -1+6E-17*i, we compute the argument of
    * the result of c^d and if arg ~ 0 [Pi], we discard the residual imaginary
    * part and if arg ~ Pi/2 [Pi], we discard the residual real part. */
-  std::complex<T> result = std::pow(c, d);
   return Complex<T>(ApproximationHelper::TruncateRealOrImaginaryPartAccordingToArgument(result));
 }
 
@@ -122,10 +132,16 @@ bool PowerNode::childNeedsParenthesis(const TreeNode * child) const {
   return static_cast<const ExpressionNode *>(child)->isOfType(types, 6);
 }
 
+int PowerNode::serialize(char * buffer, int bufferSize, Preferences::PrintFloatMode floatDisplayMode, int numberOfSignificantDigits) const {
+  return SerializationHelper::Infix(this, buffer, bufferSize, floatDisplayMode, numberOfSignificantDigits, "^");
+}
+
+
+
 // Simplify
 
-Expression PowerNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
-  return Power(this).shallowReduce(context, angleUnit);
+Expression PowerNode::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
+  return Power(this).shallowReduce(context, angleUnit, replaceSymbols);
 }
 
 Expression PowerNode::shallowBeautify(Context & context, Preferences::AngleUnit angleUnit) {
@@ -206,15 +222,15 @@ Expression Power::setSign(ExpressionNode::Sign s, Context & context, Preferences
   return result;
 }
 
-int Power::getPolynomialCoefficients(char symbolName, Expression coefficients[]) const {
-  int deg = polynomialDegree(symbolName);
+int Power::getPolynomialCoefficients(Context & context, const char * symbolName, Expression coefficients[]) const {
+  int deg = polynomialDegree(context, symbolName);
   if (deg <= 0) {
-    return Expression::defaultGetPolynomialCoefficients(symbolName, coefficients);
+    return Expression::defaultGetPolynomialCoefficients(context, symbolName, coefficients);
   }
   /* Here we only consider the case x^4 as privateGetPolynomialCoefficients is
    * supposed to be called after reducing the expression. */
   if (childAtIndex(0).type() == ExpressionNode::Type::Symbol
-      && childAtIndex(0).convert<Symbol>().name() == symbolName
+      && strcmp(childAtIndex(0).convert<Symbol>().name(), symbolName) == 0
       && childAtIndex(1).type() == ExpressionNode::Type::Rational)
   {
     Rational r = childAtIndex(1).convert<Rational>();
@@ -237,7 +253,7 @@ int Power::getPolynomialCoefficients(char symbolName, Expression coefficients[])
   return -1;
 }
 
-Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleUnit) {
+Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleUnit, bool replaceSymbols) {
 
   {
     Expression e = Expression::defaultShallowReduce(context, angleUnit);
@@ -295,12 +311,11 @@ Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleU
   Evaluation<float> c1Approximated = childAtIndex(1).node()->approximate(1.0f, context, angleUnit);
   Complex<float> c0 = static_cast<Complex<float>&>(c0Approximated);
   Complex<float> c1 = static_cast<Complex<float>&>(c1Approximated);
-  bool bothChildrenComplexes = c0.imag() != 0 && c1.imag() != 0;
+  bool bothChildrenComplexes = c0.imag() != 0 && c1.imag() != 0 && !std::isnan(c0.imag()) && !std::isnan(c1.imag());
   bool nonComplexNegativeChild0 = c0.imag() == 0 && c0.real() < 0;
   if (bothChildrenComplexes) {
     return *this;
   }
-
 
   /* Step 1: We handle simple cases as x^0, x^1, 0^x and 1^x first for 2 reasons:
    * - we can assert this step that there is no division by 0:
@@ -365,13 +380,36 @@ Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleU
   if (childAtIndex(1).type() == ExpressionNode::Type::Rational) {
     const Rational b = childAtIndex(1).convert<Rational>();
     // i^(p/q)
-    if (childAtIndex(0).type() == ExpressionNode::Type::Symbol && childAtIndex(0).convert<Symbol>().name() == Ion::Charset::IComplex) {
+    if (childAtIndex(0).type() == ExpressionNode::Type::Constant && childAtIndex(0).convert<Constant>().isIComplex()) {
       Number r = Number::Multiplication(b, Rational(1, 2));
       Expression result = CreateComplexExponent(r);
       replaceWithInPlace(result);
       return result.shallowReduce(context, angleUnit);
     }
   }
+
+  // (±inf)^x
+  if (childAtIndex(0).type() == ExpressionNode::Type::Infinity) {
+    Expression result;
+    if (childAtIndex(1).sign() == ExpressionNode::Sign::Negative) {
+      // --> 0 if x < 0
+      result = Rational(0);
+    } else if (childAtIndex(1).sign() == ExpressionNode::Sign::Positive) {
+      // --> (±inf) if x > 0
+      result = Infinity(false);
+      if (childAtIndex(0).sign() == ExpressionNode::Sign::Negative) {
+        // (-inf)^x --> (-1)^x*inf
+        Power p(Rational(-1), childAtIndex(1));
+        result = Multiplication(p, result);
+        p.shallowReduce(context, angleUnit);
+      }
+    }
+    if (!result.isUninitialized()) {
+      replaceWithInPlace(result);
+      return result.shallowReduce(context, angleUnit);
+    }
+  }
+
   bool letPowerAtRoot = parentIsALogarithmOfSameBase();
   if (childAtIndex(0).type() == ExpressionNode::Type::Rational) {
     Rational a = childAtIndex(0).convert<Rational>();
@@ -396,7 +434,7 @@ Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleU
     m0.shallowReduce(context, angleUnit);
     Multiplication m1 = Multiplication();
     replaceWithInPlace(m1);
-    m1.addChildAtIndexInPlace(Symbol(Ion::Charset::IComplex), 0, 0);
+    m1.addChildAtIndexInPlace(Constant(Ion::Charset::IComplex), 0, 0);
     m1.addChildAtIndexInPlace(*this, 1, 1);
     shallowReduce(context, angleUnit);
     return m1.shallowReduce(context, angleUnit);
@@ -409,9 +447,9 @@ Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleU
     if (angleUnit == Preferences::AngleUnit::Degree) {
       m.replaceChildAtIndexInPlace(m.numberOfChildren()-1, Rational(180));
     }
-    Expression cos = Cosine(m);
+    Expression cos = Cosine::Builder(m);
     m = m.shallowReduce(context, angleUnit);
-    Expression sin = Sine(m.clone());
+    Expression sin = Sine::Builder(m.clone());
     Expression complexPart = Multiplication(sin, i);
     sin.shallowReduce(context, angleUnit);
     Expression a = Addition(cos, complexPart);
@@ -443,7 +481,7 @@ Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleU
   // (a^b)^c -> a^(b*c) if a > 0 or c is integer
   if (childAtIndex(0).type() == ExpressionNode::Type::Power) {
     Power p = childAtIndex(0).convert<Power>();
-    // Check is a > 0 or c is Integer
+    // Check if a > 0 or c is Integer
     if (p.childAtIndex(0).sign() == ExpressionNode::Sign::Positive
         || (childAtIndex(1).type() == ExpressionNode::Type::Rational
           && childAtIndex(1).convert<Rational>().integerDenominator().isOne()))
@@ -509,6 +547,8 @@ Expression Power::shallowReduce(Context & context, Preferences::AngleUnit angleU
       Power p1 = Power(childAtIndex(0).clone(), a.childAtIndex(0).clone());
       Power thisRef = *this;
       childAtIndex(1).convert<Addition>().removeChildAtIndexInPlace(0); // p2 = a^(c+...)
+      // if addition had only 2 children
+      childAtIndex(1).convert<Addition>().squashUnaryHierarchyInPlace();
       Multiplication m = Multiplication(p1);
       replaceWithInPlace(m);
       m.addChildAtIndexInPlace(thisRef, 1, 1);
@@ -626,11 +666,11 @@ Expression Power::shallowBeautify(Context & context, Preferences::AngleUnit angl
   if (childAtIndex(1).type() == ExpressionNode::Type::Rational && childAtIndex(1).convert<Rational>().signedIntegerNumerator().isOne()) {
     Integer index = childAtIndex(1).convert<Rational>().integerDenominator();
     if (index.isEqualTo(Integer(2))) {
-      Expression result = SquareRoot(childAtIndex(0));
+      Expression result = SquareRoot::Builder(childAtIndex(0));
       replaceWithInPlace(result);
       return result;
     }
-    Expression result = NthRoot(childAtIndex(0), Rational(index));
+    Expression result = NthRoot::Builder(childAtIndex(0), Rational(index));
     replaceWithInPlace(result);
     return result;
   }
@@ -888,8 +928,8 @@ bool Power::parentIsALogarithmOfSameBase() const {
   // parent = ln(e^x)
   if (p.type() == ExpressionNode::Type::NaperianLogarithm
       && p.childAtIndex(0) == *this
-      && childAtIndex(0).type() == ExpressionNode::Type::Symbol
-      && childAtIndex(0).convert<Symbol>().name() == Ion::Charset::Exponential)
+      && childAtIndex(0).type() == ExpressionNode::Type::Constant
+      && childAtIndex(0).convert<Constant>().isExponential())
   {
     return true;
   }
@@ -898,7 +938,7 @@ bool Power::parentIsALogarithmOfSameBase() const {
 
 bool Power::isNthRootOfUnity() const {
   // We check we are equal to e^(i*pi) or e^(i*pi*rational)
-  if (childAtIndex(0).type() != ExpressionNode::Type::Symbol || childAtIndex(0).convert<Symbol>().name() != Ion::Charset::Exponential) {
+  if (childAtIndex(0).type() != ExpressionNode::Type::Constant || !childAtIndex(0).convert<Constant>().isExponential()) {
     return false;
   }
   if (childAtIndex(1).type() != ExpressionNode::Type::Multiplication) {
@@ -908,11 +948,11 @@ bool Power::isNthRootOfUnity() const {
     return false;
   }
   const Expression i = childAtIndex(1).childAtIndex(childAtIndex(1).numberOfChildren()-1);
-  if (i.type() != ExpressionNode::Type::Symbol || static_cast<const Symbol &>(i).name() != Ion::Charset::IComplex) {
+  if (i.type() != ExpressionNode::Type::Constant || !static_cast<const Constant &>(i).isIComplex()) {
     return false;
   }
   const Expression pi = childAtIndex(1).childAtIndex(childAtIndex(1).numberOfChildren()-2);
-  if (pi.type() != ExpressionNode::Type::Symbol || static_cast<const Symbol &>(pi).name() != Ion::Charset::SmallPi) {
+  if (pi.type() != ExpressionNode::Type::Constant || !static_cast<const Constant &>(pi).isPi()) {
     return false;
   }
   if (numberOfChildren() == 2) {
@@ -926,15 +966,15 @@ bool Power::isNthRootOfUnity() const {
 
 Expression Power::CreateComplexExponent(const Expression & r) {
   // Returns e^(i*pi*r)
-  const Symbol exp = Symbol(Ion::Charset::Exponential);
-  const Symbol iComplex = Symbol(Ion::Charset::IComplex);
-  const Symbol pi = Symbol(Ion::Charset::SmallPi);
+  const Constant exp = Constant(Ion::Charset::Exponential);
+  const Constant iComplex = Constant(Ion::Charset::IComplex);
+  const Constant pi = Constant(Ion::Charset::SmallPi);
   Multiplication mExp = Multiplication(iComplex, pi, r.clone());
   mExp.sortChildrenInPlace(PowerNode::SimplificationOrder, false);
   return Power(exp, mExp);
 #if 0
-  const Symbol iComplex = Symbol(Ion::Charset::IComplex);
-  const Symbol pi = Symbol(Ion::Charset::SmallPi);
+  const Constant iComplex = Constant(Ion::Charset::IComplex);
+  const Constant pi = Constant(Ion::Charset::SmallPi);
   Expression op = Multiplication(pi, r).shallowReduce(context, angleUnit);
   Cosine cos = Cosine(op).shallowReduce(context, angleUnit);;
   Sine sin = Sine(op).shallowReduce(context, angleUnit);

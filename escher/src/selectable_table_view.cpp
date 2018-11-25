@@ -77,12 +77,24 @@ bool SelectableTableView::selectCellAtLocation(int i, int j, bool setFirstRespon
   int previousY = selectedRow();
   selectColumn(i);
   selectRow(j);
-  if (selectedRow() >= 0) {
-    scrollToCell(i, j);
+
+  if (m_delegate) {
+    m_delegate->tableViewDidChangeSelection(this, previousX, previousY);
   }
+
+  /* We need to scroll:
+   * - After notifying the delegate. For instance,
+   *   StorageExpressionModelListController needs to update its memoized cell
+   *   height values before any scroll.
+   * - Before setting the first responder. If the first responder is a view, it
+   *   might change during the scroll. */
+
+  if (selectedRow() >= 0) {
+    scrollToCell(selectedColumn(), selectedRow());
+  }
+
   HighlightCell * cell = selectedCell();
   if (cell) {
-    cell->setHighlighted(true);
     // Update first responder
     if ((i != previousX || j != previousY) && setFirstResponder) {
       if (cell->responder()) {
@@ -92,8 +104,10 @@ bool SelectableTableView::selectCellAtLocation(int i, int j, bool setFirstRespon
       }
     }
   }
-  if (m_delegate) {
-    m_delegate->tableViewDidChangeSelection(this, previousX, previousY);
+
+  cell = selectedCell();
+  if (cell) {
+    cell->setHighlighted(true);
   }
   return true;
 }
@@ -128,9 +142,12 @@ bool SelectableTableView::handleEvent(Ion::Events::Event event) {
       Clipboard::sharedClipboard()->store(text);
       return true;
     }
-    Poincare::Layout layoutR = cell->layout();
-    if (!layoutR.isUninitialized()) {
-      Clipboard::sharedClipboard()->store(layoutR);
+    Poincare::Layout l = cell->layout();
+    if (!l.isUninitialized()) {
+      constexpr int bufferSize = TextField::maxBufferSize();
+      char buffer[bufferSize];
+      l.serializeParsedExpression(buffer, bufferSize);
+      Clipboard::sharedClipboard()->store(buffer);
       return true;
     }
   }
